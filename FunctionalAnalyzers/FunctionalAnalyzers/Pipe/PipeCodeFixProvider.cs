@@ -12,11 +12,12 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Text;
+using Microsoft.CodeAnalysis.Editing;
 
 namespace FunctionalAnalyzers
 {
-    [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(FunctionalAnalyzersCodeFixProvider)), Shared]
-    public class FunctionalAnalyzersCodeFixProvider : CodeFixProvider
+    [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(PipeCodeFixProvider)), Shared]
+    public class PipeCodeFixProvider : CodeFixProvider
     {
         private const string GeneratePipe_s = "Generate pipe function";
         private const string MakeFuncPipe_s = "Make function piped";
@@ -36,25 +37,26 @@ namespace FunctionalAnalyzers
         {
             var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
 
-            // TODO: Replace the following code with your own analysis, generating a CodeAction for each fix to suggest
             var diagnostic = context.Diagnostics.First();
             var diagnosticSpan = diagnostic.Location.SourceSpan;
+            var methodCall = root.FindToken(diagnosticSpan.Start).Parent.Parent;
 
-            // Find the type declaration identified by the diagnostic.
-            var declaration = root.FindToken(diagnosticSpan.Start).Parent.AncestorsAndSelf().OfType<TypeDeclarationSyntax>().First();
+            var pipeExists = context.Document.Project.Documents.FirstOrDefault(x => x.Name == "Lambda.cs") != null;
 
-            // Register a code action that will invoke the fix.
-            context.RegisterCodeFix(
-                CodeAction.Create(
-                    title: GeneratePipe_s,
-                    createChangedDocument: c => GeneratePipe(context.Document),
-                    equivalenceKey: GeneratePipe_s),
-                diagnostic);
+            if (!pipeExists)
+            {
+                context.RegisterCodeFix(
+                    CodeAction.Create(
+                        title: GeneratePipe_s,
+                        createChangedDocument: c => GeneratePipe(context.Document),
+                        equivalenceKey: GeneratePipe_s),
+                    diagnostic);
+            }
 
             context.RegisterCodeFix(
                 CodeAction.Create(
                     title: MakeFuncPipe_s,
-                    createChangedDocument: c => MakeFunctionPipe(context.Document, declaration, c),
+                    createChangedDocument: c => MakeFunctionPipe(context.Document, methodCall),
                     equivalenceKey: MakeFuncPipe_s),
                 diagnostic);
         }
@@ -62,7 +64,7 @@ namespace FunctionalAnalyzers
         private async Task<Document> GeneratePipe(Document document)
         {
             var pipe = CSharpSyntaxTree.ParseText(
-                @"namespace "+ document.Project.Name + @"
+                @"namespace " + document.Project.Name + @"
                 {
                     using System;
 
@@ -88,30 +90,45 @@ namespace FunctionalAnalyzers
                     delegate Pipe<T> Pipe<T>(Func<T, T> a);
                 }");
 
-
-
             return document.Project.AddDocument("Lambda.cs", pipe.GetRoot(), new string[] { "Functions" });
         }
 
-        private async Task<Document> MakeFunctionPipe(Document document, TypeDeclarationSyntax typeDecl, CancellationToken cancellationToken)
+        private async Task<Document> MakeFunctionPipe(Document document, SyntaxNode method)
         {
-             var tree = await document.GetSyntaxTreeAsync();
+            var invocations = method.DescendantNodesAndSelf()
+                .Where(x => x is InvocationExpressionSyntax)
+                .Cast<InvocationExpressionSyntax>()
+                .Reverse()
+                .ToArray();
 
-            // Compute new uppercase name.
-            var identifierToken = typeDecl.Identifier;
-            var newName = identifierToken.Text.ToUpperInvariant();
+            InvocationExpressionSyntax pipeInvocation = null;
 
-            // Get the symbol representing the type to be renamed.
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
-            var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl, cancellationToken);
+            var piped = "Lambda.Pipe";
 
-            // Produce a new solution that has all references to that type renamed, including the declaration.
-            var originalSolution = document.Project.Solution;
-            var optionSet = originalSolution.Workspace.Options;
-            var newSolution = await Renamer.RenameSymbolAsync(document.Project.Solution, typeSymbol, newName, optionSet, cancellationToken).ConfigureAwait(false);
+            foreach (var invocation in invocations)
+            {
+                piped += $"({invocation.Expression.GetText().ToString()})";
+            }
 
-            // Return the new solution with the now-uppercase type name.
-            return document;
+            piped += ";";
+
+            CSharpSyntaxTree.ParseText(piped, options: new CSharpParseOptions(kind: SourceCodeKind.Script))
+                .GetRoot()
+                .DescendantNodes(x =>
+                {
+                    if (x is InvocationExpressionSyntax xInvocation)
+                    {
+                        pipeInvocation = xInvocation;
+                        return false;
+                    }
+
+                    return true;
+                }).ToArray();
+
+            var editor = await DocumentEditor.CreateAsync(document);
+            editor.ReplaceNode(method, pipeInvocation);
+
+            return editor.GetChangedDocument();
         }
     }
 }

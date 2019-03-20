@@ -71,7 +71,7 @@ namespace FunctionalAnalyzers.Test
 
         protected override CodeFixProvider GetCSharpCodeFixProvider()
         {
-            return new FunctionalAnalyzersCodeFixProvider();
+            return new PipeCodeFixProvider();
         }
 
         protected override DiagnosticAnalyzer GetCSharpDiagnosticAnalyzer()

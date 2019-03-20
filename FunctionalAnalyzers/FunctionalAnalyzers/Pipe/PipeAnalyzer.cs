@@ -36,6 +36,24 @@ namespace FunctionalAnalyzers
         {
             var node = (InvocationExpressionSyntax)context.Node;
 
+            bool alreadyLambda = false;
+            node.DescendantTokens(token =>
+             {
+                 if (token is IdentifierNameSyntax nameTokenSyntax)
+                 {
+                     if(nameTokenSyntax.Identifier.Text == "Lambda")
+                     {
+                         alreadyLambda = true;
+                     }
+                     return false;
+                 }
+
+                 return true;
+             }).ToArray();
+
+            if (alreadyLambda)
+                return;
+
             List<InvocationExpressionSyntax> pipeAvailableFor = new List<InvocationExpressionSyntax>();
 
             node.ArgumentList.DescendantNodes(descNode =>
@@ -64,8 +82,6 @@ namespace FunctionalAnalyzers
 
             var diagnostic = Diagnostic.Create(Rule, node.GetLocation(), nestedMethods, node.ToString());
             context.ReportDiagnostic(diagnostic);
-
-            Console.WriteLine();
         }
 
     }
