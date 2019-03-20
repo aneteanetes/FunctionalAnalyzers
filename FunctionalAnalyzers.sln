@@ -1,0 +1,37 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.489
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FunctionalAnalyzers", "FunctionalAnalyzers\FunctionalAnalyzers\FunctionalAnalyzers.csproj", "{8D96CB48-3E17-4C18-A2F8-EEA86DC621DE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FunctionalAnalyzers.Test", "FunctionalAnalyzers\FunctionalAnalyzers.Test\FunctionalAnalyzers.Test.csproj", "{FF75200A-A6DC-44C7-B6B0-AC1BC420D07B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FunctionalAnalyzers.Vsix", "FunctionalAnalyzers\FunctionalAnalyzers.Vsix\FunctionalAnalyzers.Vsix.csproj", "{B699BD81-A6E6-4B7B-A226-AAC5F380820D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8D96CB48-3E17-4C18-A2F8-EEA86DC621DE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8D96CB48-3E17-4C18-A2F8-EEA86DC621DE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8D96CB48-3E17-4C18-A2F8-EEA86DC621DE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8D96CB48-3E17-4C18-A2F8-EEA86DC621DE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FF75200A-A6DC-44C7-B6B0-AC1BC420D07B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FF75200A-A6DC-44C7-B6B0-AC1BC420D07B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FF75200A-A6DC-44C7-B6B0-AC1BC420D07B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FF75200A-A6DC-44C7-B6B0-AC1BC420D07B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B699BD81-A6E6-4B7B-A226-AAC5F380820D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B699BD81-A6E6-4B7B-A226-AAC5F380820D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B699BD81-A6E6-4B7B-A226-AAC5F380820D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B699BD81-A6E6-4B7B-A226-AAC5F380820D}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {CD944275-85A3-4F23-96F6-4483D7570CCF}
+	EndGlobalSection
+EndGlobal
