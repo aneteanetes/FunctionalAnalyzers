@@ -76,7 +76,7 @@ namespace FunctionalAnalyzers.Test
 
         protected override DiagnosticAnalyzer GetCSharpDiagnosticAnalyzer()
         {
-            return new FunctionalAnalyzersAnalyzer();
+            return new PipeAnalyzer();
         }
     }
 }

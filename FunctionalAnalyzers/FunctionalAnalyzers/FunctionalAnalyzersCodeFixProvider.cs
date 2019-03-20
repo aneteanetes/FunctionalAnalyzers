@@ -18,11 +18,12 @@ namespace FunctionalAnalyzers
     [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(FunctionalAnalyzersCodeFixProvider)), Shared]
     public class FunctionalAnalyzersCodeFixProvider : CodeFixProvider
     {
-        private const string title = "Make uppercase";
+        private const string GeneratePipe_s = "Generate pipe function";
+        private const string MakeFuncPipe_s = "Make function piped";
 
         public sealed override ImmutableArray<string> FixableDiagnosticIds
         {
-            get { return ImmutableArray.Create(FunctionalAnalyzersAnalyzer.DiagnosticId); }
+            get { return ImmutableArray.Create(PipeAnalyzer.DiagnosticId); }
         }
 
         public sealed override FixAllProvider GetFixAllProvider()
@@ -45,14 +46,57 @@ namespace FunctionalAnalyzers
             // Register a code action that will invoke the fix.
             context.RegisterCodeFix(
                 CodeAction.Create(
-                    title: title,
-                    createChangedSolution: c => MakeUppercaseAsync(context.Document, declaration, c),
-                    equivalenceKey: title),
+                    title: GeneratePipe_s,
+                    createChangedDocument: c => GeneratePipe(context.Document),
+                    equivalenceKey: GeneratePipe_s),
+                diagnostic);
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: MakeFuncPipe_s,
+                    createChangedDocument: c => MakeFunctionPipe(context.Document, declaration, c),
+                    equivalenceKey: MakeFuncPipe_s),
                 diagnostic);
         }
 
-        private async Task<Solution> MakeUppercaseAsync(Document document, TypeDeclarationSyntax typeDecl, CancellationToken cancellationToken)
+        private async Task<Document> GeneratePipe(Document document)
         {
+            var pipe = CSharpSyntaxTree.ParseText(
+                @"namespace "+ document.Project.Name + @"
+                {
+                    using System;
+
+                    internal static class Lambda
+                    {
+                        public static Pipe<T> Pipe<T>(Func<T> f)
+                        {            
+                            T data = default;
+                            Pipe<T> start(Func<T> arg)
+                            {
+                                data = arg();
+                                Pipe<T> pipe(Func<T, T> arg1)
+                                {
+                                    data = arg1(data);
+                                    return pipe;
+                                }
+                                return pipe;
+                            }
+                            return start(f);
+                        }
+                    }
+
+                    delegate Pipe<T> Pipe<T>(Func<T, T> a);
+                }");
+
+
+
+            return document.Project.AddDocument("Lambda.cs", pipe.GetRoot(), new string[] { "Functions" });
+        }
+
+        private async Task<Document> MakeFunctionPipe(Document document, TypeDeclarationSyntax typeDecl, CancellationToken cancellationToken)
+        {
+             var tree = await document.GetSyntaxTreeAsync();
+
             // Compute new uppercase name.
             var identifierToken = typeDecl.Identifier;
             var newName = identifierToken.Text.ToUpperInvariant();
@@ -67,7 +111,7 @@ namespace FunctionalAnalyzers
             var newSolution = await Renamer.RenameSymbolAsync(document.Project.Solution, typeSymbol, newName, optionSet, cancellationToken).ConfigureAwait(false);
 
             // Return the new solution with the now-uppercase type name.
-            return newSolution;
+            return document;
         }
     }
 }
