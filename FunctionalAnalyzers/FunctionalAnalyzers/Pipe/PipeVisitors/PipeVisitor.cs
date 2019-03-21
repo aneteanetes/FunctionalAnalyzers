@@ -12,6 +12,7 @@ namespace FunctionalAnalyzers.Pipe
     public class PipeVisitor : AbstractResultVisitor<PipeResult>
     {
         private readonly List<PipePart> Pipe = new List<PipePart>();
+        private SyntaxNode forRemove = null;
 
         private IdentifierVisitor IdentifierVisitor = new IdentifierVisitor();
         private InvocationVisitor InvocationVisitor = new InvocationVisitor();
@@ -23,7 +24,8 @@ namespace FunctionalAnalyzers.Pipe
             if (Pipe.Count == 0)
                 return default;
 
-            var distinct = Pipe.Distinct().ToList();
+            var distinct = Pipe.GroupBy(x => x.Identifier + x.Method.Name + x.Method.Argument)
+                .Select(g => g.First());
 
             string template = "Lambda.Pipe";
 
@@ -51,24 +53,40 @@ namespace FunctionalAnalyzers.Pipe
             return new PipeResult
             {
                 PipeNode = pipeInvocation,
-                RemoveNodes = Pipe.Select(x => x.NodeToRemove).ToArray()
+                RemoveNodes = Pipe.Select(x => x.NodeToRemove).ToArray(),
+                NodeToReplace=distinct.Last().NodeToReplace
             };
         }
 
         public override void VisitAssignmentExpression(AssignmentExpressionSyntax node) => ExtractIdentifierAndInvocation(node);
         public override void VisitVariableDeclaration(VariableDeclarationSyntax node) => ExtractIdentifierAndInvocation(node);
 
+        public override void VisitLocalDeclarationStatement(LocalDeclarationStatementSyntax node)
+        {
+            forRemove = node;
+            base.VisitLocalDeclarationStatement(node);
+        }
+
+        public override void VisitExpressionStatement(ExpressionStatementSyntax node)
+        {
+            forRemove = node;
+            base.VisitExpressionStatement(node);
+        }
+
         private void ExtractIdentifierAndInvocation(SyntaxNode node)
         {
-            var identifier = IdentifierVisitor.VisitResult(node);
-            var invocation = InvocationVisitor.VisitResult(node);
+            var identifier = new IdentifierVisitor().VisitResult(node);
+            var invocation = new InvocationVisitor().VisitResult(node);
 
             Pipe.Add(new PipePart
             {
                 Identifier = identifier,
                 Method = invocation,
-                NodeToRemove = invocation.Node
+                NodeToRemove = forRemove,
+                NodeToReplace=invocation.Node
             });
+
+            forRemove = null;
         }
     }
 
@@ -79,6 +97,8 @@ namespace FunctionalAnalyzers.Pipe
         public MethodInfo Method { get; set; }
 
         public SyntaxNode NodeToRemove { get; set; }
+
+        public SyntaxNode NodeToReplace { get; set; }
     }
 
     public class PipeResult
@@ -86,5 +106,7 @@ namespace FunctionalAnalyzers.Pipe
         public SyntaxNode PipeNode { get; set; }
 
         public SyntaxNode[] RemoveNodes { get; set; }
+
+        public SyntaxNode NodeToReplace { get; set; }
     }
 }

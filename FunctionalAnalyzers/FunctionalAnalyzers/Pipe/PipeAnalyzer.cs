@@ -29,8 +29,8 @@ namespace FunctionalAnalyzers
 
         public override void Initialize(AnalysisContext context)
         {
-            context.RegisterSyntaxNodeAction(AnalyzeNode, SyntaxKind.InvocationExpression);
-            //context.RegisterSyntaxNodeAction(AnalyzeMethod, SyntaxKind.MethodDeclaration);
+            //context.RegisterSyntaxNodeAction(AnalyzeNode, SyntaxKind.InvocationExpression);
+            context.RegisterSyntaxNodeAction(AnalyzeMethod, SyntaxKind.MethodDeclaration);
         }
 
         private static readonly List<InvocationExpressionSyntax> selectedNodes = new List<InvocationExpressionSyntax>();
@@ -87,9 +87,15 @@ namespace FunctionalAnalyzers
             context.ReportDiagnostic(diagnostic);
         }
 
+        public static List<string> SeqRemoveMethods = new List<string>();
+
         private static void AnalyzeMethod(SyntaxNodeAnalysisContext context)
         {
+
             if (!(context.Node is MethodDeclarationSyntax methodDeclarationNode))
+                return;
+
+            if (SeqRemoveMethods.Contains(methodDeclarationNode.Identifier.ToString()))
                 return;
 
             var result = new PipeVisitor().VisitResult(methodDeclarationNode);

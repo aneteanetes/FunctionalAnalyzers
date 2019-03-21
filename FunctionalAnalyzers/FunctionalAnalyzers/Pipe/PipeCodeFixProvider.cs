@@ -22,6 +22,7 @@ namespace FunctionalAnalyzers
     {
         private const string GeneratePipe_s = "Generate pipe function";
         private const string MakeFuncPipe_s = "Make function piped";
+        private const string RemoveSeq = "Replace sequential calls with pipe";
 
         public sealed override ImmutableArray<string> FixableDiagnosticIds
         {
@@ -40,8 +41,8 @@ namespace FunctionalAnalyzers
 
             var diagnostic = context.Diagnostics.First();
             var diagnosticSpan = diagnostic.Location.SourceSpan;
-            var methodCall = root.FindToken(diagnosticSpan.Start).Parent
-                .Parent;
+            var methodCall = root.FindToken(diagnosticSpan.Start).Parent;
+                //.Parent;
 
             var pipeExists = context.Document.Project.Documents.FirstOrDefault(x => x.Name == "Lambda.cs") != null;
 
@@ -55,19 +56,19 @@ namespace FunctionalAnalyzers
                     diagnostic);
             }
 
-            context.RegisterCodeFix(
-                CodeAction.Create(
-                    title: MakeFuncPipe_s,
-                    createChangedDocument: c => MakeFunctionPipe(context.Document, methodCall),
-                    equivalenceKey: MakeFuncPipe_s),
-                diagnostic);
-
             //context.RegisterCodeFix(
             //    CodeAction.Create(
             //        title: MakeFuncPipe_s,
-            //        createChangedDocument: c => MakeMethodPipeContained(context.Document, methodCall),
+            //        createChangedDocument: c => MakeFunctionPipe(context.Document, methodCall),
             //        equivalenceKey: MakeFuncPipe_s),
             //    diagnostic);
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: RemoveSeq,
+                    createChangedDocument: c => MakeMethodPipeContained(context.Document, methodCall),
+                    equivalenceKey: RemoveSeq),
+                diagnostic);
         }
 
         private async Task<Document> GeneratePipe(Document document)
@@ -156,16 +157,20 @@ namespace FunctionalAnalyzers
 
                 if (i == removeNodes.Length - 1)
                 {
-                    editor.ReplaceNode(removingNode, result.PipeNode);
+                    editor.ReplaceNode(result.NodeToReplace, result.PipeNode);
                 }
                 else
                 {
                     editor.RemoveNode(removingNode);
                 }
-                
+
             }
 
-            return editor.GetChangedDocument();
+            var doc = editor.GetChangedDocument();
+
+            PipeAnalyzer.SeqRemoveMethods.Add(methodDeclarationNode.Identifier.ToString());
+
+            return doc;
         }
     }
 }
