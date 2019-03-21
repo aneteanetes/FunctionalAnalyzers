@@ -13,6 +13,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.CodeAnalysis.Editing;
+using FunctionalAnalyzers.Pipe;
 
 namespace FunctionalAnalyzers
 {
@@ -39,7 +40,8 @@ namespace FunctionalAnalyzers
 
             var diagnostic = context.Diagnostics.First();
             var diagnosticSpan = diagnostic.Location.SourceSpan;
-            var methodCall = root.FindToken(diagnosticSpan.Start).Parent.Parent;
+            var methodCall = root.FindToken(diagnosticSpan.Start).Parent
+                .Parent;
 
             var pipeExists = context.Document.Project.Documents.FirstOrDefault(x => x.Name == "Lambda.cs") != null;
 
@@ -59,6 +61,13 @@ namespace FunctionalAnalyzers
                     createChangedDocument: c => MakeFunctionPipe(context.Document, methodCall),
                     equivalenceKey: MakeFuncPipe_s),
                 diagnostic);
+
+            //context.RegisterCodeFix(
+            //    CodeAction.Create(
+            //        title: MakeFuncPipe_s,
+            //        createChangedDocument: c => MakeMethodPipeContained(context.Document, methodCall),
+            //        equivalenceKey: MakeFuncPipe_s),
+            //    diagnostic);
         }
 
         private async Task<Document> GeneratePipe(Document document)
@@ -127,6 +136,34 @@ namespace FunctionalAnalyzers
 
             var editor = await DocumentEditor.CreateAsync(document);
             editor.ReplaceNode(method, pipeInvocation);
+
+            return editor.GetChangedDocument();
+        }
+
+        private async Task<Document> MakeMethodPipeContained(Document document, SyntaxNode node)
+        {
+            if (!(node is MethodDeclarationSyntax methodDeclarationNode))
+                return document;
+
+            var result = new PipeVisitor().VisitResult(methodDeclarationNode);
+
+            var editor = await DocumentEditor.CreateAsync(document);
+
+            var removeNodes = result.RemoveNodes;
+            for (int i = 0; i < removeNodes.Length; i++)
+            {
+                var removingNode = removeNodes[i];
+
+                if (i == removeNodes.Length - 1)
+                {
+                    editor.ReplaceNode(removingNode, result.PipeNode);
+                }
+                else
+                {
+                    editor.RemoveNode(removingNode);
+                }
+                
+            }
 
             return editor.GetChangedDocument();
         }
