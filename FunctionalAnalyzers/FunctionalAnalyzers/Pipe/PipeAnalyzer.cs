@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
+using FunctionalAnalyzers.Pipe;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -21,13 +22,15 @@ namespace FunctionalAnalyzers
 
         private const string Category = "Functions";
 
-        private static DiagnosticDescriptor Rule = new DiagnosticDescriptor(DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Error, isEnabledByDefault: true, description: Description);
+        private static DiagnosticDescriptor Rule = new DiagnosticDescriptor(DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, isEnabledByDefault: true, description: Description);
+        private static DiagnosticDescriptor RuleMethod = new DiagnosticDescriptor(DiagnosticId, ".", "Function: '{0}' method can contains pipe instead of sequential calls", Category, DiagnosticSeverity.Error, isEnabledByDefault: true, description: Description);
 
-        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get { return ImmutableArray.Create(Rule); } }
+        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get { return ImmutableArray.Create(Rule,RuleMethod); } }
 
         public override void Initialize(AnalysisContext context)
         {
-            context.RegisterSyntaxNodeAction(AnalyzeNode, SyntaxKind.InvocationExpression);
+            //context.RegisterSyntaxNodeAction(AnalyzeNode, SyntaxKind.InvocationExpression);
+            context.RegisterSyntaxNodeAction(AnalyzeMethod, SyntaxKind.MethodDeclaration);
         }
 
         private static readonly List<InvocationExpressionSyntax> selectedNodes = new List<InvocationExpressionSyntax>();
@@ -82,6 +85,41 @@ namespace FunctionalAnalyzers
 
             var diagnostic = Diagnostic.Create(Rule, node.GetLocation(), nestedMethods, node.ToString());
             context.ReportDiagnostic(diagnostic);
+        }
+
+        public static List<string> SeqRemoveMethods = new List<string>();
+
+        private static void AnalyzeMethod(SyntaxNodeAnalysisContext context)
+        {
+
+            if (!(context.Node is MethodDeclarationSyntax methodDeclarationNode))
+                return;
+
+            if (SeqRemoveMethods.Contains(methodDeclarationNode.Identifier.ToString()))
+                return;
+
+            var result = new PipeVisitor().VisitResult(methodDeclarationNode);
+
+            if (result == default)
+                return;
+
+            var diagnostic = Diagnostic.Create(RuleMethod, methodDeclarationNode.GetLocation(), methodDeclarationNode.Identifier.ToString());
+            context.ReportDiagnostic(diagnostic);
+        }
+
+        static int Method(int a) => a;
+
+        static int Example()
+        {
+            var a = 15;
+
+            var data = Method(a);
+
+            data = Method(a);
+
+            var x = Method(data);
+
+            return x;
         }
 
     }

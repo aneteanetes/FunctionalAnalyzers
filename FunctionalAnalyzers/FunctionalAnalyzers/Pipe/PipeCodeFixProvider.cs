@@ -13,6 +13,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.CodeAnalysis.Editing;
+using FunctionalAnalyzers.Pipe;
 
 namespace FunctionalAnalyzers
 {
@@ -21,6 +22,7 @@ namespace FunctionalAnalyzers
     {
         private const string GeneratePipe_s = "Generate pipe function";
         private const string MakeFuncPipe_s = "Make function piped";
+        private const string RemoveSeq = "Replace sequential calls with pipe";
 
         public sealed override ImmutableArray<string> FixableDiagnosticIds
         {
@@ -39,7 +41,8 @@ namespace FunctionalAnalyzers
 
             var diagnostic = context.Diagnostics.First();
             var diagnosticSpan = diagnostic.Location.SourceSpan;
-            var methodCall = root.FindToken(diagnosticSpan.Start).Parent.Parent;
+            var methodCall = root.FindToken(diagnosticSpan.Start).Parent;
+                //.Parent;
 
             var pipeExists = context.Document.Project.Documents.FirstOrDefault(x => x.Name == "Lambda.cs") != null;
 
@@ -53,11 +56,18 @@ namespace FunctionalAnalyzers
                     diagnostic);
             }
 
+            //context.RegisterCodeFix(
+            //    CodeAction.Create(
+            //        title: MakeFuncPipe_s,
+            //        createChangedDocument: c => MakeFunctionPipe(context.Document, methodCall),
+            //        equivalenceKey: MakeFuncPipe_s),
+            //    diagnostic);
+
             context.RegisterCodeFix(
                 CodeAction.Create(
-                    title: MakeFuncPipe_s,
-                    createChangedDocument: c => MakeFunctionPipe(context.Document, methodCall),
-                    equivalenceKey: MakeFuncPipe_s),
+                    title: RemoveSeq,
+                    createChangedDocument: c => MakeMethodPipeContained(context.Document, methodCall),
+                    equivalenceKey: RemoveSeq),
                 diagnostic);
         }
 
@@ -129,6 +139,38 @@ namespace FunctionalAnalyzers
             editor.ReplaceNode(method, pipeInvocation);
 
             return editor.GetChangedDocument();
+        }
+
+        private async Task<Document> MakeMethodPipeContained(Document document, SyntaxNode node)
+        {
+            if (!(node is MethodDeclarationSyntax methodDeclarationNode))
+                return document;
+
+            var result = new PipeVisitor().VisitResult(methodDeclarationNode);
+
+            var editor = await DocumentEditor.CreateAsync(document);
+
+            var removeNodes = result.RemoveNodes;
+            for (int i = 0; i < removeNodes.Length; i++)
+            {
+                var removingNode = removeNodes[i];
+
+                if (i == removeNodes.Length - 1)
+                {
+                    editor.ReplaceNode(result.NodeToReplace, result.PipeNode);
+                }
+                else
+                {
+                    editor.RemoveNode(removingNode);
+                }
+
+            }
+
+            var doc = editor.GetChangedDocument();
+
+            PipeAnalyzer.SeqRemoveMethods.Add(methodDeclarationNode.Identifier.ToString());
+
+            return doc;
         }
     }
 }
