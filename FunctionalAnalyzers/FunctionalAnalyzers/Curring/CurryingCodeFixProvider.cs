@@ -13,6 +13,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.CodeAnalysis.Editing;
+using Microsoft.CodeAnalysis.Formatting;
 
 namespace FunctionalAnalyzers
 {
@@ -40,17 +41,38 @@ namespace FunctionalAnalyzers
             var diagnosticSpan = diagnostic.Location.SourceSpan;
             var methodCall = root.FindToken(diagnosticSpan.Start).Parent.Parent;
 
-            var curryFunc = $"Curry `{methodCall.ToString()}`";
 
-            context.RegisterCodeFix(
-                CodeAction.Create(
-                    title: curryFunc,
-                    createChangedDocument: c => GenerateCarry(context.Document, methodCall),
-                    equivalenceKey: curryFunc),
-                diagnostic);
+            var guid = diagnostic.Descriptor.CustomTags.FirstOrDefault();
+
+            if (CurryingAnalyzer.SelectedNodes.TryGetValue(guid, out var invocationInfos))
+            {
+                var sameArgs = string.Join(",",
+                    invocationInfos
+                        .SelectMany(x => x.Arguments)
+                        .GroupBy(x => x)
+                        .Where(x => x.Count() > 1)
+                        .Select(x => x.Key));
+
+                var curryFunc = $"Curry `{sameArgs}` arguments in `{methodCall.ToString()}`";
+
+                context.RegisterCodeFix(
+                    CodeAction.Create(
+                        title: curryFunc,
+                        createChangedDocument: c => FullCurrying(context.Document, methodCall, guid, invocationInfos),                        
+                        equivalenceKey: curryFunc),
+                    diagnostic);
+            }
         }
 
-        private async Task<Document> GenerateCarry(Document document, SyntaxNode invocationNode)
+        /// <summary>
+        /// Полное каррирование функции
+        /// </summary>
+        /// <param name="document"></param>
+        /// <param name="invocationNode"></param>
+        /// <param name="guid"></param>
+        /// <param name="invocationInfos"></param>
+        /// <returns></returns>
+        private async Task<Document> FullCurrying(Document document, SyntaxNode invocationNode, string guid, List<InvocationInfo> invocationInfos)
         {
             var root = await document.GetSyntaxRootAsync();
 
@@ -77,32 +99,51 @@ namespace FunctionalAnalyzers
 
             var argsList = args.Select(x => x).ToArray();
 
-            var funcType = args.First().Value;
-            var secondArg = args.Last();
+            var last = args.Last();
 
-            var template = $@"Func<{funcType},{funcType}> {identifier.Text}({secondArg.Value}{secondArg.Key})";
+            var first = args.First();
+            var prevs = args.ToList();
+
+            var second = args.Skip(1)
+                .FirstOrDefault();
+
+            var template = $"Func<{second.Value},{NextTypeChain(prevs, second, last,true)} {identifier.Text}({first.Value} {first.Key})";
+            
 
             for (int i = 1; i < argsList.Length; i++)
             {
                 template += $"{Environment.NewLine}=> {argsList[i - 1].Key}";
             }
 
-            template += $"{Environment.NewLine}=>{Environment.NewLine}{method.Body.ToString()};";
+            template += $"{Environment.NewLine}";
 
-            MethodDeclarationSyntax methodReplace = null;
+            if (method.Body != null)
+            {
+                template += $"=>{Environment.NewLine}{method.Body.ToString()};";
+            }
+
+            if(method.ExpressionBody!=null)
+            {
+                template += method.ExpressionBody.ToString();
+            }
+
+            SyntaxNode methodAdd = default;
 
             CSharpSyntaxTree.ParseText(template, options: new CSharpParseOptions(kind: SourceCodeKind.Script))
                 .GetRoot()
                 .DescendantNodes(x =>
                 {
-                    if (x is MethodDeclarationSyntax xInvocation)
+                    if (x is MethodDeclarationSyntax member)
                     {
-                        methodReplace = xInvocation;
+                        methodAdd = member;
                         return false;
                     }
 
                     return true;
                 }).ToArray();
+
+            var workspace = new AdhocWorkspace();
+            methodAdd = Formatter.Format(methodAdd, workspace);
 
             #endregion
 
@@ -111,7 +152,6 @@ namespace FunctionalAnalyzers
             var node = invocationNode as InvocationExpressionSyntax;
             var arguments = node.ArgumentList.ChildNodes()
                 .Select(arg => (arg as ArgumentSyntax).GetText().ToString())
-                .Reverse()
                 .ToArray();
 
             template = $"{identifier.Text}";
@@ -138,16 +178,52 @@ namespace FunctionalAnalyzers
             #endregion
 
             var editor = await DocumentEditor.CreateAsync(document);
-            editor.ReplaceNode(method, methodReplace);
+            editor.InsertAfter(method, methodAdd);
             editor.ReplaceNode(invocationNode, invocationReplace);
+
+            editor.ReplaceNode(editor.OriginalRoot, Formatter.Format(editor.GetChangedRoot(), workspace).NormalizeWhitespace());
 
             return editor.GetChangedDocument();
         }
 
-        private async Task<Document> MakeFunctionPipe(Document document, SyntaxNode method)
+        private static string NextTypeChain(List<KeyValuePair<string, string>> prevs, KeyValuePair<string, string> prev, KeyValuePair<string, string> last, bool first = false)
         {
-            // Return the new solution with the now-uppercase type name.
-            return document;
+            var idx = prevs.IndexOf(prev);
+            var next = prevs.GetRange(idx + 1, prevs.Count - idx - 1);
+
+            string type = string.Empty;
+
+            foreach (var nxt in next)
+            {
+                type = NextTypeChain(prevs, nxt, last);
+            }
+
+            if (next.Count == 0)
+            {
+                type = last.Value;
+            }
+
+            var result = string.Empty;
+
+            if (!first)
+            {
+                result += $"Func<{prev.Value},";
+            }
+
+            return $"{result}{type}>";
+        }
+    }
+
+    public static class StringExtensions
+    {
+        public static string Capitalize(this string input)
+        {
+            switch (input)
+            {
+                case null: throw new ArgumentNullException(nameof(input));
+                case "": throw new ArgumentException($"{nameof(input)} cannot be empty", nameof(input));
+                default: return input.First().ToString().ToUpper() + input.Substring(1);
+            }
         }
     }
 }

@@ -23,10 +23,104 @@ namespace FunctionalAnalyzers
 
         public override void Initialize(AnalysisContext context)
         {
-            context.RegisterSyntaxNodeAction(AnalyzeNode, SyntaxKind.InvocationExpression);
+            context.RegisterSyntaxTreeAction(AnalyzeTree);
+
+            //context.RegisterSyntaxNodeAction(AnalyzeNode, SyntaxKind.InvocationExpression);
         }
 
-        private static readonly List<InvocationExpressionSyntax> selectedNodes = new List<InvocationExpressionSyntax>();
+        //private static readonly List<InvocationExpressionSyntax> selectedNodes = new List<InvocationExpressionSyntax>();
+
+        public static Dictionary<string, List<InvocationInfo>> SelectedNodes = new Dictionary<string, List<InvocationInfo>>();
+
+        private static void AnalyzeTree(SyntaxTreeAnalysisContext context)
+        {
+            var invocations = new Dictionary<string, List<InvocationInfo>>();
+
+            context.Tree.GetRoot().DescendantNodes(node =>
+            {
+                if (node is InvocationExpressionSyntax invocation)
+                {
+                    if (invocation.Expression is IdentifierNameSyntax identifier)
+                    {
+                        var id = identifier.ToString();
+                        if (!invocations.ContainsKey(id))
+                        {
+                            invocations.Add(id, new List<InvocationInfo>());
+                        }
+
+                        invocations[id].Add(new InvocationInfo()
+                        {
+                            Node = invocation,
+                            Name = id,
+                            ArgsCount = invocation.ArgumentList.ChildNodes().Count(),
+                            Arguments = invocation.ArgumentList.ChildNodes().Select(x => (x as ArgumentSyntax).GetText().ToString()).ToList()
+                        });
+                    }
+                }
+
+                return true;
+            }).ToArray();
+
+            var curryPossible = new Dictionary<string, List<InvocationInfo>>();
+
+            foreach (var sameName in invocations)
+            {
+                foreach (var countGroup in sameName.Value.GroupBy(x => x.ArgsCount))
+                {
+                    foreach (var val in countGroup)
+                    {
+                        var sames = countGroup.Where(x => x != val && x.Arguments.Intersect(val.Arguments).Count() > 0 && !x.MarkAndSweep).ToList();
+                        foreach (var same in sames)
+                        {
+                            same.MarkAndSweep = true;
+                        }
+
+                        if (!curryPossible.ContainsKey(val.Name))
+                        {
+                            curryPossible.Add(val.Name, new List<InvocationInfo>());
+                        }
+
+                        curryPossible[val.Name].AddRange(sames);
+                    }
+                }
+            }
+
+            SelectedNodes.Clear();
+
+            if (curryPossible.Count>0)
+            {
+                foreach (var possible in curryPossible)
+                {
+                    if (possible.Value.Count == 0)
+                        continue;
+
+                    var node = possible.Value.First().Node;
+
+                    var sameArgs = possible.Value
+                        .SelectMany(x => x.Arguments)
+                        .GroupBy(x => x)
+                        .Where(x => x.Count() > 1)
+                        .Select(x => x.Key)
+                        .ToArray();
+
+                    var guid = Guid.NewGuid().ToString();
+
+                    var rule = new DiagnosticDescriptor(
+                        DiagnosticId,
+                        "Arguments", 
+                        $"Function: Arguments ({string.Join(",",sameArgs)}) in '{{0}}' can be curried", 
+                        Category, 
+                        DiagnosticSeverity.Warning, 
+                        isEnabledByDefault: true, 
+                        customTags: guid);
+                    
+                    SelectedNodes.Add(guid, possible.Value);
+
+                    var diagnostic = Diagnostic.Create(rule, node.GetLocation(), node.ToString());
+                    context.ReportDiagnostic(diagnostic);
+                }
+            }
+        }
 
         private static void AnalyzeNode(SyntaxNodeAnalysisContext context)
         {
@@ -40,6 +134,18 @@ namespace FunctionalAnalyzers
                 context.ReportDiagnostic(diagnostic);
             }
         }
+    }
 
+    public class InvocationInfo
+    {
+        public string Name { get; set; }
+
+        public int ArgsCount { get; set; }
+
+        public List<string> Arguments { get; set; }
+
+        public InvocationExpressionSyntax Node { get; set; }
+
+        public bool MarkAndSweep { get; set; }
     }
 }
