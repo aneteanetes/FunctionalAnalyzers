@@ -17,18 +17,17 @@ namespace FunctionalAnalyzers
 
         private const string Category = "Functions";
 
-        private static DiagnosticDescriptor Rule = new DiagnosticDescriptor(DiagnosticId, "TOTTTTEL", "Function: '{0}' can be curried", Category, DiagnosticSeverity.Warning, isEnabledByDefault: true, description: "@$R#%#%KLH%L");
+        private static DiagnosticDescriptor CurringRule = new DiagnosticDescriptor(DiagnosticId, "Functions", "Function: '{0}' can be curried", Category, DiagnosticSeverity.Warning, isEnabledByDefault: true);
+        private static DiagnosticDescriptor CurringArgsRule = new DiagnosticDescriptor("CurringArgs", "Arguments", $"Function: Arguments in '{{0}}' can be curried", Category, DiagnosticSeverity.Warning, isEnabledByDefault: true);
 
-        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get { return ImmutableArray.Create(Rule); } }
+        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get { return ImmutableArray.Create(CurringRule, CurringArgsRule); } }
 
         public override void Initialize(AnalysisContext context)
         {
             context.RegisterSyntaxTreeAction(AnalyzeTree);
 
-            //context.RegisterSyntaxNodeAction(AnalyzeNode, SyntaxKind.InvocationExpression);
+            context.RegisterSyntaxNodeAction(AnalyzeNode, SyntaxKind.InvocationExpression);
         }
-
-        //private static readonly List<InvocationExpressionSyntax> selectedNodes = new List<InvocationExpressionSyntax>();
 
         public static Dictionary<string, List<InvocationInfo>> SelectedNodes = new Dictionary<string, List<InvocationInfo>>();
 
@@ -50,7 +49,7 @@ namespace FunctionalAnalyzers
 
                         invocations[id].Add(new InvocationInfo()
                         {
-                            Node = invocation,
+                            InvocationNode = invocation,
                             Name = id,
                             ArgsCount = invocation.ArgumentList.ChildNodes().Count(),
                             Arguments = invocation.ArgumentList.ChildNodes().Select(x => (x as ArgumentSyntax).GetText().ToString()).ToList()
@@ -94,7 +93,7 @@ namespace FunctionalAnalyzers
                     if (possible.Value.Count == 0)
                         continue;
 
-                    var node = possible.Value.First().Node;
+                    var node = possible.Value.Last().InvocationNode;
 
                     var sameArgs = possible.Value
                         .SelectMany(x => x.Arguments)
@@ -106,7 +105,7 @@ namespace FunctionalAnalyzers
                     var guid = Guid.NewGuid().ToString();
 
                     var rule = new DiagnosticDescriptor(
-                        DiagnosticId,
+                        "CurringArgs",
                         "Arguments", 
                         $"Function: Arguments ({string.Join(",",sameArgs)}) in '{{0}}' can be curried", 
                         Category, 
@@ -124,15 +123,17 @@ namespace FunctionalAnalyzers
 
         private static void AnalyzeNode(SyntaxNodeAnalysisContext context)
         {
-            var node = (InvocationExpressionSyntax)context.Node;
+            // IF IN PIPE
 
-            var argumentsCount = node.ArgumentList.ChildNodes().Count();
+            //var node = (InvocationExpressionSyntax)context.Node;
 
-            if (argumentsCount > 1)
-            {
-                var diagnostic = Diagnostic.Create(Rule, node.GetLocation(), node.ToString());
-                context.ReportDiagnostic(diagnostic);
-            }
+            //var argumentsCount = node.ArgumentList.ChildNodes().Count();
+
+            //if (argumentsCount > 1)
+            //{
+            //    var diagnostic = Diagnostic.Create(Rule, node.GetLocation(), node.ToString());
+            //    context.ReportDiagnostic(diagnostic);
+            //}
         }
     }
 
@@ -144,7 +145,9 @@ namespace FunctionalAnalyzers
 
         public List<string> Arguments { get; set; }
 
-        public InvocationExpressionSyntax Node { get; set; }
+        public InvocationExpressionSyntax InvocationNode { get; set; }
+
+        public SyntaxNode Node { get; set; }
 
         public bool MarkAndSweep { get; set; }
     }
