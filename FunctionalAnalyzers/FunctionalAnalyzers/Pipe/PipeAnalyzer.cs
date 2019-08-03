@@ -29,7 +29,7 @@ namespace FunctionalAnalyzers
 
         public override void Initialize(AnalysisContext context)
         {            
-            //context.RegisterSyntaxNodeAction(AnalyzeMethod, SyntaxKind.MethodDeclaration);
+            context.RegisterSyntaxNodeAction(AnalyzeMethod, SyntaxKind.MethodDeclaration);
         }
 
         private static readonly List<InvocationExpressionSyntax> selectedNodes = new List<InvocationExpressionSyntax>();
