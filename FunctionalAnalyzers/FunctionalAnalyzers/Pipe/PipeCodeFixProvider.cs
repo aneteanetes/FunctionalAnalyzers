@@ -179,48 +179,13 @@ namespace FunctionalAnalyzers
                 var editor = await DocumentEditor.CreateAsync(document);
 
 
-                if (result.BlockToExpressionNode == default)
+                if (result.CanReplaceMethod)
                 {
-                    var removeNodes = result.RemoveNodes;
-                    for (int i = 0; i < removeNodes.Length; i++)
-                    {
-                        var removingNode = removeNodes[i];
-
-                        if (i == removeNodes.Length - 1)
-                        {
-                            editor.ReplaceNode(result.NodeToReplace, result.PipeNode);
-                        }
-                        else
-                        {
-                            editor.RemoveNode(removingNode);
-                        }
-
-                    }
+                    ReplaceAllBody(node, methodDeclarationNode, result, editor);
                 }
                 else
                 {
-                    if (methodDeclarationNode.ExpressionBody != null)
-                    {
-                        editor.ReplaceNode(methodDeclarationNode.ExpressionBody, result.PipeNode);
-                    }
-                    else
-                    {
-                        var template = string.Join(" ", methodDeclarationNode.Modifiers.Select(p => p.ToString()))
-                            + " " + methodDeclarationNode.ReturnType.ToString()
-                            + " " + methodDeclarationNode.Identifier.ToString()
-                            + "(" + string.Join(",", methodDeclarationNode.ParameterList.Parameters.Select(p => p.ToString())) + ")"
-                            + "=> " + result.PipeNode.ToString();
-
-                        SyntaxNode newNode = default;
-                        CSharpSyntaxTree.ParseText(template, options: new CSharpParseOptions(kind: SourceCodeKind.Script))
-                            .GetRoot()
-                            .DescendantNodes(x =>
-                            {
-                                newNode = x;
-                                return x is CompilationUnitSyntax || x is GlobalStatementSyntax;
-                            }).ToArray();
-                        editor.ReplaceNode(node, newNode);
-                    }
+                    ReplaceSequencesCalls(result, editor);
                 }
 
                 var workspace = new AdhocWorkspace();
@@ -230,6 +195,57 @@ namespace FunctionalAnalyzers
             }
 
             return doc;
+        }
+
+        private static void ReplaceSequencesCalls(PipeResult result, DocumentEditor editor)
+        {
+            var removeNodes = result.RemoveNodes;
+            for (int i = 0; i < removeNodes.Length; i++)
+            {
+                var removingNode = removeNodes[i];
+
+                if (i == removeNodes.Length - 1)
+                {
+                    editor.ReplaceNode(result.NodeToReplace, result.PipeNode);
+                }
+                else
+                {
+                    editor.RemoveNode(removingNode);
+                }
+
+            }
+        }
+
+        private static void ReplaceAllBody(SyntaxNode node, MethodDeclarationSyntax methodDeclarationNode, PipeResult result, DocumentEditor editor)
+        {
+            if (methodDeclarationNode.ExpressionBody != null)
+            {
+                editor.ReplaceNode(methodDeclarationNode.ExpressionBody, result.PipeNode);
+            }
+            else
+            {
+                var template = string.Join(" ", methodDeclarationNode.Modifiers.Select(p => p.ToString()))
+                    + " " + methodDeclarationNode.ReturnType.ToString()
+                    + " " + methodDeclarationNode.Identifier.ToString()
+                    + "(" + string.Join(",", methodDeclarationNode.ParameterList.Parameters.Select(p => p.ToString())) + ")"
+                    + "=> " + result.PipeNode.ToString();
+
+                if (methodDeclarationNode.ReturnType.ToString() != "void")
+                {
+                    template += ".Value()";
+                }
+                template += ";";
+
+                SyntaxNode newNode = default;
+                CSharpSyntaxTree.ParseText(template, options: new CSharpParseOptions(kind: SourceCodeKind.Script))
+                    .GetRoot()
+                    .DescendantNodes(x =>
+                    {
+                        newNode = x;
+                        return x is CompilationUnitSyntax || x is GlobalStatementSyntax;
+                    }).ToArray();
+                editor.ReplaceNode(node, newNode);
+            }
         }
     }
 }

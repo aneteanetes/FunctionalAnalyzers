@@ -14,9 +14,6 @@ namespace FunctionalAnalyzers.Pipe
         private readonly List<PipePart> Pipe = new List<PipePart>();
         private SyntaxNode forRemove = null;
 
-        private IdentifierVisitor IdentifierVisitor = new IdentifierVisitor();
-        private InvocationVisitor InvocationVisitor = new InvocationVisitor();
-
         public override PipeResult VisitResult(SyntaxNode node)
         {
             this.Visit(node);
@@ -37,13 +34,6 @@ namespace FunctionalAnalyzers.Pipe
                 template += $"({item.Method.Name})";
             }
 
-            if (endNode != default)
-            {
-                template = "=> " + template + ".Value()";
-            }
-
-            template += ";";
-
             SyntaxNode pipeNode = default;
             CSharpSyntaxTree.ParseText(template, options: new CSharpParseOptions(kind: SourceCodeKind.Script))
                 .GetRoot()
@@ -58,27 +48,70 @@ namespace FunctionalAnalyzers.Pipe
                 PipeNode = pipeNode,
                 RemoveNodes = Pipe.Select(x => x.NodeToRemove).ToArray(),
                 NodeToReplace = (endNode ?? distinct.Last()).NodeToReplace,
-                BlockToExpressionNode = endNode?.BlockToExpressionNode
+                BlockToExpressionNode = endNode?.BlockToExpressionNode,
+                CanReplaceMethod = interestedNodes.Count==0
             };
         }
 
-        public override void VisitAssignmentExpression(AssignmentExpressionSyntax node) => ExtractIdentifierAndInvocation(node);
-        public override void VisitVariableDeclaration(VariableDeclarationSyntax node) => ExtractIdentifierAndInvocation(node);
+        bool collect = false;
+
+
+        private List<SyntaxNode> interestedNodes = new List<SyntaxNode>();
+
+        public override void Visit(SyntaxNode node)
+        {
+            if (collect)
+            {
+                interestedNodes.Add(node);
+            }
+
+            base.Visit(node);
+        }
+
+        public override void VisitBlock(BlockSyntax node)
+        {
+            if (node.Parent is MethodDeclarationSyntax)
+            {
+                collect = true;
+            }
+            base.VisitBlock(node);
+        }
+
+        public override void VisitIdentifierName(IdentifierNameSyntax node)
+        {
+            interestedNodes.Remove(node);
+            base.VisitIdentifierName(node);
+        }
+
+        public override void VisitAssignmentExpression(AssignmentExpressionSyntax node)
+        {
+            interestedNodes.Remove(node);
+            ExtractIdentifierAndInvocation(node);
+        }
+
+        public override void VisitVariableDeclaration(VariableDeclarationSyntax node)
+        {
+            interestedNodes.Remove(node);
+            ExtractIdentifierAndInvocation(node);
+        }
 
         public override void VisitLocalDeclarationStatement(LocalDeclarationStatementSyntax node)
         {
             forRemove = node;
+            interestedNodes.Remove(node);
             base.VisitLocalDeclarationStatement(node);
         }
 
         public override void VisitExpressionStatement(ExpressionStatementSyntax node)
         {
             forRemove = node;
+            interestedNodes.Remove(node);
             base.VisitExpressionStatement(node);
         }
 
         public override void VisitReturnStatement(ReturnStatementSyntax node)
         {
+            interestedNodes.Remove(node);
             Pipe.Add(new PipePart()
             {
                 Identifier = "return",
@@ -91,8 +124,15 @@ namespace FunctionalAnalyzers.Pipe
 
         private void ExtractIdentifierAndInvocation(SyntaxNode node)
         {
-            var identifier = new IdentifierVisitor().VisitResult(node);
-            var invocation = new InvocationVisitor().VisitResult(node);
+            var idVisitor = new IdentifierVisitor();
+            var invVisitor = new InvocationVisitor();
+            
+
+            var identifier = idVisitor.VisitResult(node);
+            var invocation = invVisitor.VisitResult(node);
+
+            interestedNodes.Remove(idVisitor.ProcessedNode);
+            interestedNodes.Remove(invVisitor.ProcessedNode);
 
             Pipe.Add(new PipePart
             {
@@ -130,5 +170,7 @@ namespace FunctionalAnalyzers.Pipe
         public SyntaxNode NodeToReplace { get; set; }
 
         public SyntaxNode BlockToExpressionNode { get; set; }
+
+        public bool CanReplaceMethod { get; set; }
     }
 }

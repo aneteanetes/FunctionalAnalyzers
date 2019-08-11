@@ -14,11 +14,13 @@ namespace FunctionalAnalyzers.Pipe
 
         public override void VisitAssignmentExpression(AssignmentExpressionSyntax node)
         {
+            ProcessedNode = node.Left;
             value = node.Left.ToString();
         }
 
         public override void VisitVariableDeclarator(VariableDeclaratorSyntax node)
         {
+            ProcessedNode = node;
             value = node.Identifier.ToString();
         }
 

@@ -14,6 +14,8 @@ namespace FunctionalAnalyzers.Pipe
 
         public override void VisitInvocationExpression(InvocationExpressionSyntax node)
         {
+            ProcessedNode = node.Expression;
+
             value.Name = node.Expression.ToString();
             value.Node = node;
             base.VisitInvocationExpression(node);
