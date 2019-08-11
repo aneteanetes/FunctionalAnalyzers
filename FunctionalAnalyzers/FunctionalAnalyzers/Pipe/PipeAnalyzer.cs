@@ -22,8 +22,8 @@ namespace FunctionalAnalyzers
 
         private const string Category = "Functions";
 
-        private static DiagnosticDescriptor Rule = new DiagnosticDescriptor(DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, isEnabledByDefault: true, description: Description);
-        private static DiagnosticDescriptor RuleMethod = new DiagnosticDescriptor(DiagnosticId, ".", "Function: '{0}' method can contains pipe instead of sequential calls", Category, DiagnosticSeverity.Error, isEnabledByDefault: true, description: Description);
+        private static DiagnosticDescriptor Rule = new DiagnosticDescriptor(DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Hidden, isEnabledByDefault: true, description: Description);
+        private static DiagnosticDescriptor RuleMethod = new DiagnosticDescriptor(DiagnosticId, ".", "Function: '{0}' method can contains pipe instead of sequential calls", Category, DiagnosticSeverity.Hidden, isEnabledByDefault: true, description: Description);
 
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get { return ImmutableArray.Create(Rule,RuleMethod); } }
 

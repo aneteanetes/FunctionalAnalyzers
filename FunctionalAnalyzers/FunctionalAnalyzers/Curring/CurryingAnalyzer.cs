@@ -17,8 +17,8 @@ namespace FunctionalAnalyzers
 
         private const string Category = "Functions";
 
-        private static DiagnosticDescriptor CurringRule = new DiagnosticDescriptor(DiagnosticId, "Functions", "Function: '{0}' can be curried", Category, DiagnosticSeverity.Warning, isEnabledByDefault: true);
-        private static DiagnosticDescriptor CurringArgsRule = new DiagnosticDescriptor("CurringArgs", "Arguments", $"Function: Arguments in '{{0}}' can be curried", Category, DiagnosticSeverity.Warning, isEnabledByDefault: true);
+        private static DiagnosticDescriptor CurringRule = new DiagnosticDescriptor(DiagnosticId, "Functions", "Function: '{0}' can be curried", Category, DiagnosticSeverity.Hidden, isEnabledByDefault: true);
+        private static DiagnosticDescriptor CurringArgsRule = new DiagnosticDescriptor("CurringArgs", "Arguments", $"Function: Arguments in '{{0}}' can be curried", Category, DiagnosticSeverity.Hidden, isEnabledByDefault: true);
 
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get { return ImmutableArray.Create(CurringRule, CurringArgsRule); } }
 
@@ -109,7 +109,7 @@ namespace FunctionalAnalyzers
                         "Arguments", 
                         $"Function: Arguments ({string.Join(",",sameArgs)}) in '{{0}}' can be curried", 
                         Category, 
-                        DiagnosticSeverity.Warning, 
+                        DiagnosticSeverity.Hidden, 
                         isEnabledByDefault: true, 
                         customTags: guid);
                     

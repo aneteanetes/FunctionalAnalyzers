@@ -24,7 +24,10 @@ namespace FunctionalAnalyzers.Pipe
             if (Pipe.Count == 0)
                 return default;
 
-            var distinct = Pipe.GroupBy(x => x.Identifier + x.Method.Name + x.Method.Argument)
+            var endNode = Pipe.Where(x => x.End).FirstOrDefault();
+
+            var distinct = Pipe.Where(n=>!n.End)
+                .GroupBy(x => x.Identifier + x.Method.Name + x.Method.Argument)                
                 .Select(g => g.First());
 
             string template = "Lambda.Pipe";
@@ -34,27 +37,28 @@ namespace FunctionalAnalyzers.Pipe
                 template += $"({item.Method.Name})";
             }
 
+            if (endNode != default)
+            {
+                template = "=> " + template + ".Value()";
+            }
+
             template += ";";
 
-            InvocationExpressionSyntax pipeInvocation = default;
+            SyntaxNode pipeNode = default;
             CSharpSyntaxTree.ParseText(template, options: new CSharpParseOptions(kind: SourceCodeKind.Script))
                 .GetRoot()
                 .DescendantNodes(x =>
                 {
-                    if (x is InvocationExpressionSyntax xInvocation)
-                    {
-                        pipeInvocation = xInvocation;
-                        return false;
-                    }
-
-                    return true;
+                    pipeNode = x;
+                    return x is CompilationUnitSyntax || x is GlobalStatementSyntax;
                 }).ToArray();
 
             return new PipeResult
             {
-                PipeNode = pipeInvocation,
+                PipeNode = pipeNode,
                 RemoveNodes = Pipe.Select(x => x.NodeToRemove).ToArray(),
-                NodeToReplace=distinct.Last().NodeToReplace
+                NodeToReplace = (endNode ?? distinct.Last()).NodeToReplace,
+                BlockToExpressionNode = endNode?.BlockToExpressionNode
             };
         }
 
@@ -71,6 +75,18 @@ namespace FunctionalAnalyzers.Pipe
         {
             forRemove = node;
             base.VisitExpressionStatement(node);
+        }
+
+        public override void VisitReturnStatement(ReturnStatementSyntax node)
+        {
+            Pipe.Add(new PipePart()
+            {
+                Identifier = "return",
+                End = true,
+                NodeToReplace = node,
+                BlockToExpressionNode=node.Parent
+            });
+            base.VisitReturnStatement(node);
         }
 
         private void ExtractIdentifierAndInvocation(SyntaxNode node)
@@ -99,6 +115,10 @@ namespace FunctionalAnalyzers.Pipe
         public SyntaxNode NodeToRemove { get; set; }
 
         public SyntaxNode NodeToReplace { get; set; }
+
+        public bool End { get; set; }
+
+        public SyntaxNode BlockToExpressionNode { get; set; }
     }
 
     public class PipeResult
@@ -108,5 +128,7 @@ namespace FunctionalAnalyzers.Pipe
         public SyntaxNode[] RemoveNodes { get; set; }
 
         public SyntaxNode NodeToReplace { get; set; }
+
+        public SyntaxNode BlockToExpressionNode { get; set; }
     }
 }

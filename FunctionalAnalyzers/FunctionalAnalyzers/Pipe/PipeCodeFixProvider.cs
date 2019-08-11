@@ -14,6 +14,7 @@ using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.CodeAnalysis.Editing;
 using FunctionalAnalyzers.Pipe;
+using Microsoft.CodeAnalysis.Formatting;
 
 namespace FunctionalAnalyzers
 {
@@ -42,7 +43,7 @@ namespace FunctionalAnalyzers
             var diagnostic = context.Diagnostics.First();
             var diagnosticSpan = diagnostic.Location.SourceSpan;
             var methodCall = root.FindToken(diagnosticSpan.Start).Parent;
-                //.Parent;
+            //.Parent;
 
             var pipeExists = context.Document.Project.Documents.FirstOrDefault(x => x.Name == "Lambda.cs") != null;
 
@@ -73,16 +74,21 @@ namespace FunctionalAnalyzers
 
         private async Task<Document> GeneratePipe(Document document)
         {
-            var pipe = CSharpSyntaxTree.ParseText(
+            var pipeNode = CSharpSyntaxTree.ParseText(
                 @"namespace " + document.Project.Name + @"
                 {
                     using System;
+                    using System.Collections.Generic;
 
                     internal static class Lambda
                     {
+                        private static Dictionary<object, object> execFuncs = new Dictionary<object, object>();
+
                         public static Pipe<T> Pipe<T>(Func<T> f)
-                        {            
+                        {
                             T data = default;
+                            Func<T> startValue = () => data;
+
                             Pipe<T> start(Func<T> arg)
                             {
                                 data = arg();
@@ -91,16 +97,34 @@ namespace FunctionalAnalyzers
                                     data = arg1(data);
                                     return pipe;
                                 }
+
+                                Pipe<T> pipeObj = pipe;
+
+                                execFuncs[pipeObj] = startValue;
+
                                 return pipe;
                             }
                             return start(f);
+                        }
+
+                        public static T Value<T>(Pipe<T> pipe)
+                        {
+                            if (execFuncs.TryGetValue(pipe, out var val))
+                            {
+                                return (T)val;
+                            }
+
+                            return default;
                         }
                     }
 
                     delegate Pipe<T> Pipe<T>(Func<T, T> a);
                 }");
 
-            return document.Project.AddDocument("Lambda.cs", pipe.GetRoot(), new string[] { "Functions" });
+            var workspace = new AdhocWorkspace();
+            var pipe = Formatter.Format(pipeNode.GetRoot(), workspace).NormalizeWhitespace();
+
+            return document.Project.AddDocument("Lambda.cs", pipe, new string[] { "Functions" });
         }
 
         private async Task<Document> MakeFunctionPipe(Document document, SyntaxNode method)
@@ -148,27 +172,62 @@ namespace FunctionalAnalyzers
 
             var result = new PipeVisitor().VisitResult(methodDeclarationNode);
 
-            var editor = await DocumentEditor.CreateAsync(document);
+            var doc = document;
 
-            var removeNodes = result.RemoveNodes;
-            for (int i = 0; i < removeNodes.Length; i++)
+            if (result.NodeToReplace != null)
             {
-                var removingNode = removeNodes[i];
+                var editor = await DocumentEditor.CreateAsync(document);
 
-                if (i == removeNodes.Length - 1)
+
+                if (result.BlockToExpressionNode == default)
                 {
-                    editor.ReplaceNode(result.NodeToReplace, result.PipeNode);
+                    var removeNodes = result.RemoveNodes;
+                    for (int i = 0; i < removeNodes.Length; i++)
+                    {
+                        var removingNode = removeNodes[i];
+
+                        if (i == removeNodes.Length - 1)
+                        {
+                            editor.ReplaceNode(result.NodeToReplace, result.PipeNode);
+                        }
+                        else
+                        {
+                            editor.RemoveNode(removingNode);
+                        }
+
+                    }
                 }
                 else
                 {
-                    editor.RemoveNode(removingNode);
+                    if (methodDeclarationNode.ExpressionBody != null)
+                    {
+                        editor.ReplaceNode(methodDeclarationNode.ExpressionBody, result.PipeNode);
+                    }
+                    else
+                    {
+                        var template = string.Join(" ", methodDeclarationNode.Modifiers.Select(p => p.ToString()))
+                            + " " + methodDeclarationNode.ReturnType.ToString()
+                            + " " + methodDeclarationNode.Identifier.ToString()
+                            + "(" + string.Join(",", methodDeclarationNode.ParameterList.Parameters.Select(p => p.ToString())) + ")"
+                            + "=> " + result.PipeNode.ToString();
+
+                        SyntaxNode newNode = default;
+                        CSharpSyntaxTree.ParseText(template, options: new CSharpParseOptions(kind: SourceCodeKind.Script))
+                            .GetRoot()
+                            .DescendantNodes(x =>
+                            {
+                                newNode = x;
+                                return x is CompilationUnitSyntax || x is GlobalStatementSyntax;
+                            }).ToArray();
+                        editor.ReplaceNode(node, newNode);
+                    }
                 }
 
+                var workspace = new AdhocWorkspace();
+                editor.ReplaceNode(editor.OriginalRoot, Formatter.Format(editor.GetChangedRoot(), workspace).NormalizeWhitespace());
+
+                doc = editor.GetChangedDocument();
             }
-
-            var doc = editor.GetChangedDocument();
-
-            PipeAnalyzer.SeqRemoveMethods.Add(methodDeclarationNode.Identifier.ToString());
 
             return doc;
         }
