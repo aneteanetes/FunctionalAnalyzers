@@ -23,15 +23,32 @@ namespace FunctionalAnalyzers.Pipe
 
             var endNode = Pipe.Where(x => x.End).FirstOrDefault();
 
-            var distinct = Pipe.Where(n=>!n.End)
-                .GroupBy(x => x.Identifier + x.Method.Name + x.Method.Argument)                
+            var distinct = Pipe.Where(n => !n.End)
+                .GroupBy(x => x.Identifier + x.Method.Name + string.Join("$", x.Method.Arguments))
                 .Select(g => g.First());
 
             string template = "Lambda.Pipe";
 
             foreach (var item in distinct)
             {
-                template += $"({item.Method.Name})";
+                var methodCall = item.Method.Name;
+
+                if (item.Method.Arguments.Count > 1)
+                {
+                    methodCall += "(" + string.Join(",", item.Method.Arguments.Skip(1)) + ")";
+                }
+
+                template += $"({methodCall})";
+            }
+
+            var canReplace = interestedNodes.Count == 0;
+            if (!canReplace)
+            {
+                if (endNode != default)
+                {
+                    template = "return " + template + ".Value()";
+                }
+                template += ";";
             }
 
             SyntaxNode pipeNode = default;
@@ -49,7 +66,7 @@ namespace FunctionalAnalyzers.Pipe
                 RemoveNodes = Pipe.Select(x => x.NodeToRemove).ToArray(),
                 NodeToReplace = (endNode ?? distinct.Last()).NodeToReplace,
                 BlockToExpressionNode = endNode?.BlockToExpressionNode,
-                CanReplaceMethod = interestedNodes.Count==0
+                CanReplaceMethod = canReplace
             };
         }
 
@@ -150,7 +167,9 @@ namespace FunctionalAnalyzers.Pipe
     {
         public string Identifier { get; set; }
 
-        public MethodInfo Method { get; set; }
+        public VisitMethodInfo Method { get; set; }
+
+        public string[] Args { get; set; }
 
         public SyntaxNode NodeToRemove { get; set; }
 

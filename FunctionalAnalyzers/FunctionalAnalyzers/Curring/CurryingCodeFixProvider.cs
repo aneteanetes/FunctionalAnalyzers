@@ -39,29 +39,17 @@ namespace FunctionalAnalyzers
 
             var diagnostic = context.Diagnostics.First();
             var diagnosticSpan = diagnostic.Location.SourceSpan;
-            var methodCall = root.FindToken(diagnosticSpan.Start).Parent.Parent;
+            var methodCall = root.FindNode(diagnosticSpan);
 
 
-            var guid = diagnostic.Descriptor.CustomTags.FirstOrDefault();
+            var curryFunc = $"Create curry version of function inside pipe";
 
-            if (CurryingAnalyzer.SelectedNodes.TryGetValue(guid, out var invocationInfos))
-            {
-                var sameArgs = string.Join(",",
-                    invocationInfos
-                        .SelectMany(x => x.Arguments)
-                        .GroupBy(x => x)
-                        .Where(x => x.Count() > 1)
-                        .Select(x => x.Key));
-
-                var curryFunc = $"Curry `{sameArgs}` arguments in `{methodCall.ToString()}`";
-
-                context.RegisterCodeFix(
-                    CodeAction.Create(
-                        title: curryFunc,
-                        createChangedDocument: c => FullCurrying(context.Document, methodCall, guid, invocationInfos),                        
-                        equivalenceKey: curryFunc),
-                    diagnostic);
-            }
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: curryFunc,
+                    createChangedDocument: c => CurryingInside(context.Document, methodCall),
+                    equivalenceKey: curryFunc),
+                diagnostic);
         }
 
         /// <summary>
@@ -72,19 +60,31 @@ namespace FunctionalAnalyzers
         /// <param name="guid"></param>
         /// <param name="invocationInfos"></param>
         /// <returns></returns>
-        private async Task<Document> FullCurrying(Document document, SyntaxNode invocationNode, string guid, List<InvocationInfo> invocationInfos)
+        private async Task<Document> CurryingInside(Document document, SyntaxNode syntaxNode)
         {
             var root = await document.GetSyntaxRootAsync();
 
             #region готовим замену функции на каррированную
 
-            var identifier = ((invocationNode as InvocationExpressionSyntax).Expression as IdentifierNameSyntax).Identifier;
+            if (!(syntaxNode is InvocationExpressionSyntax invocationNode))
+                return document;
+
+            var argNode = invocationNode.ArgumentList.ChildNodes().FirstOrDefault();
+            
+            if (!(argNode is ArgumentSyntax arg))
+                return document;
+
+            if (!(arg.Expression is InvocationExpressionSyntax innerInvocation))
+                return document;
+
+           var searchMethod = innerInvocation.Expression.ToString();
+
             MethodDeclarationSyntax method = null;
             root.DescendantNodes(x =>
             {
                 if (x is MethodDeclarationSyntax methodDeclaration)
                 {
-                    if (methodDeclaration.Identifier.Text == identifier.Text)
+                    if (methodDeclaration.Identifier.Text == searchMethod)
                     {
                         method = methodDeclaration;
                         return false;
@@ -107,12 +107,14 @@ namespace FunctionalAnalyzers
             var second = args.Skip(1)
                 .FirstOrDefault();
 
-            var template = $"Func<{second.Value},{NextTypeChain(prevs, second, last,true)} {identifier.Text}({first.Value} {first.Key})";
+            var modifiers = string.Join(" ", method.Modifiers.Select(p => p.ToString()));
+
+            var template =  $"{modifiers} Func<{second.Value},{NextTypeChain(prevs, second, last,true)} {searchMethod}({first.Value} {first.Key})";
             
 
             for (int i = 1; i < argsList.Length; i++)
             {
-                template += $"{Environment.NewLine}=> {argsList[i - 1].Key}";
+                template += $"{Environment.NewLine}=> {argsList[i].Key}";
             }
 
             template += $"{Environment.NewLine}";
@@ -124,7 +126,7 @@ namespace FunctionalAnalyzers
 
             if(method.ExpressionBody!=null)
             {
-                template += method.ExpressionBody.ToString();
+                template += method.ExpressionBody.ToString() + ";";
             }
 
             SyntaxNode methodAdd = default;
@@ -151,13 +153,17 @@ namespace FunctionalAnalyzers
 
             var node = invocationNode as InvocationExpressionSyntax;
             var arguments = node.ArgumentList.ChildNodes()
-                .Select(arg => (arg as ArgumentSyntax).GetText().ToString())
-                .ToArray();
+                .Select(a => (a as ArgumentSyntax).GetText().ToString())
+                .FirstOrDefault()
+                .Replace(searchMethod, string.Empty)
+                .Replace("(",string.Empty)
+                .Replace(")", string.Empty)
+                .Split(new string[] { "," }, StringSplitOptions.RemoveEmptyEntries);
 
-            template = $"{identifier.Text}";
-            foreach (var arg in arguments)
+            template = $"{searchMethod}";
+            foreach (var argg in arguments)
             {
-                template += $"({arg})";
+                template += $"({argg})";
             }
             template += ";";
 
@@ -179,7 +185,7 @@ namespace FunctionalAnalyzers
 
             var editor = await DocumentEditor.CreateAsync(document);
             editor.InsertAfter(method, methodAdd);
-            editor.ReplaceNode(invocationNode, invocationReplace);
+            editor.ReplaceNode(innerInvocation, invocationReplace);
 
             editor.ReplaceNode(editor.OriginalRoot, Formatter.Format(editor.GetChangedRoot(), workspace).NormalizeWhitespace());
 

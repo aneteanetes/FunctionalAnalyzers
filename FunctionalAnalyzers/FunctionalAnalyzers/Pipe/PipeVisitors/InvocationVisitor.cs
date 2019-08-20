@@ -8,10 +8,10 @@ using System.Text;
 
 namespace FunctionalAnalyzers.Pipe
 {
-    public class InvocationVisitor : AbstractResultVisitor<MethodInfo>
+    public class InvocationVisitor : AbstractResultVisitor<VisitMethodInfo>
     {
-        MethodInfo value = new MethodInfo();
-
+        VisitMethodInfo value = new VisitMethodInfo();
+        
         public override void VisitInvocationExpression(InvocationExpressionSyntax node)
         {
             ProcessedNode = node.Expression;
@@ -23,11 +23,11 @@ namespace FunctionalAnalyzers.Pipe
 
         public override void VisitArgument(ArgumentSyntax node)
         {
-            value.Argument = node.ToString();
+            value.Arguments.Add(node.ToString());
             base.VisitArgument(node);
         }
 
-        public override MethodInfo VisitResult(SyntaxNode node)
+        public override VisitMethodInfo VisitResult(SyntaxNode node)
         {
             this.Visit(node);
 
@@ -35,11 +35,11 @@ namespace FunctionalAnalyzers.Pipe
         }
     }
 
-    public class MethodInfo
+    public class VisitMethodInfo
     {
         public string Name { get; set; }
 
-        public string Argument { get; set; }
+        public List<string> Arguments { get; set; } = new List<string>();
 
         public SyntaxNode Node { get; set; }
     }

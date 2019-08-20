@@ -183,8 +183,7 @@ namespace FunctionalAnalyzers
                }).ToArray();
 
             #endregion
-
-
+            
             #region готовим замену всем вызовам
 
             //ищем ноды

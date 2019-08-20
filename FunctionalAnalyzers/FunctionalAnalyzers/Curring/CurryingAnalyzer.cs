@@ -123,17 +123,39 @@ namespace FunctionalAnalyzers
 
         private static void AnalyzeNode(SyntaxNodeAnalysisContext context)
         {
-            // IF IN PIPE
+            //IF IN PIPE
 
-            //var node = (InvocationExpressionSyntax)context.Node;
+           var node = (InvocationExpressionSyntax)context.Node;
 
-            //var argumentsCount = node.ArgumentList.ChildNodes().Count();
+            if (!IsInLambda(node))
+                return;
 
-            //if (argumentsCount > 1)
-            //{
-            //    var diagnostic = Diagnostic.Create(Rule, node.GetLocation(), node.ToString());
-            //    context.ReportDiagnostic(diagnostic);
-            //}
+            var argumentsCount = node.ArgumentList.ChildNodes().Select(x => x.ToString()).ToArray();
+
+            if (argumentsCount.Length >= 1 && argumentsCount.Any(x => x.Contains("(")))
+            {
+                var rule = new DiagnosticDescriptor(
+                    "Curring",
+                    "Pipe currying",
+                    $"Function inside pipe have more than one argument",
+                    Category,
+                    DiagnosticSeverity.Hidden,
+                    isEnabledByDefault: true);
+
+                var diagnostic = Diagnostic.Create(rule, node.GetLocation(), node.ToString());
+                context.ReportDiagnostic(diagnostic);
+            }
+        }
+
+        private static bool IsInLambda(SyntaxNode node)
+        {
+            if (node == null)
+                return false;
+
+            if (node.IsKind(SyntaxKind.Block) && node.Parent.IsKind(SyntaxKind.MethodDeclaration))
+                return false;
+
+            return node.ToString().Contains("Lambda") || IsInLambda(node.Parent);
         }
     }
 
